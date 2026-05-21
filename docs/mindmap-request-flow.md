@@ -1,180 +1,170 @@
-# 思维导图 2：用户提问 → Agent 回复的完整流程
+# 思维导图 2：用户提问到 Agent 回复的完整流程
 
-> 当你输入一个问题，代码是怎么在文件和函数之间流动的？
-
-## 流程图
+## 完整请求流程图
 
 ```mermaid
 sequenceDiagram
-    participant User as 👤 用户
+    participant User as User
     participant CLI as cli/main.py
     participant Engine as engine/engine.py
     participant Context as context/builder.py
     participant Loop as loop/loop.py
     participant Provider as api/openai_provider.py
-    participant LLM as 🤖 MiMo / DeepSeek / GPT
+    participant LLM as LLM API
     participant Permission as permissions/manager.py
-    participant Tool as tools/bash.py (等)
+    participant Tool as tools/file_read.py
 
-    Note over User,Tool: ===== 第一阶段：用户输入 =====
+    Note over User,Tool: Phase 1 - User Input
 
-    User->>CLI: 输入 "帮我看看 main.py"
-    CLI->>CLI: main() → async_main() → run_chat()
-    CLI->>Engine: engine.chat("帮我看看 main.py", callbacks)
+    User->>CLI: Input text
+    CLI->>CLI: main -> async_main -> run_chat
+    CLI->>Engine: engine.chat(user_input, callbacks)
 
-    Note over User,Tool: ===== 第二阶段：上下文构建 =====
+    Note over User,Tool: Phase 2 - Context Assembly
 
-    Engine->>Engine: 将用户消息加入 messages 列表
+    Engine->>Engine: Append user message to messages list
     Engine->>Context: context_builder.build()
-    Context->>Context: _build_environment_context() → OS/日期/CWD
-    Context->>Context: _load_project_knowledge() → 读 AGENT.md
-    Context->>Context: _get_git_status() → git branch/status/log
-    Context->>Context: _get_tool_guidelines() → 工具使用指南
-    Context-->>Engine: 返回完整 System Prompt
+    Context->>Context: _build_environment_context
+    Context->>Context: _load_project_knowledge
+    Context->>Context: _get_git_status
+    Context->>Context: _get_tool_guidelines
+    Context-->>Engine: Return full System Prompt
 
-    Note over User,Tool: ===== 第三阶段：Agentic Loop =====
+    Note over User,Tool: Phase 3 - Agentic Loop
 
-    Engine->>Engine: _should_compact() → 检查是否需要压缩
+    Engine->>Engine: _should_compact check
     Engine->>Loop: loop.run(system_prompt, messages, max_turns, callbacks)
 
-    rect rgb(255, 245, 230)
-        Note over Loop,Tool: while turns < max_turns:
-        
-        Loop->>Provider: send_message(system_prompt, messages, tools)
-        Provider->>Provider: _convert_messages() → 转换为 API 格式
-        Provider->>LLM: HTTP POST /v1/chat/completions (流式)
-        LLM-->>Provider: stream chunks (文本 + tool_calls)
-        Provider-->>CLI: on_text_delta("我来帮你读...") → 实时显示
-        Provider-->>Loop: APIResponse(content=[ToolUseContent(name="file_read")])
-        
-        Loop->>Loop: 检查 stop_reason == "tool_use" → 需要执行工具
+    Loop->>Provider: send_message(system_prompt, messages, tools)
+    Provider->>Provider: _convert_messages
+    Provider->>LLM: HTTP POST streaming request
+    LLM-->>Provider: Stream chunks with tool_calls
+    Provider-->>CLI: on_text_delta callback
+    Provider-->>Loop: APIResponse with ToolUseContent
 
-        Note over Loop,Tool: ===== 第四阶段：工具执行 =====
+    Loop->>Loop: stop_reason is tool_use
 
-        Loop->>Permission: check(FileReadTool, {"file_path": "main.py"})
-        Permission->>Permission: is_read_only == True → Allow
-        Permission-->>Loop: PermissionDecision.ALLOW
+    Note over User,Tool: Phase 4 - Tool Execution
 
-        Loop->>CLI: callbacks.on_tool_start("file_read", {...})
-        Loop->>Tool: FileReadTool.call(file_path="main.py")
-        Tool-->>Loop: ToolResult(content="文件内容...")
-        Loop->>CLI: callbacks.on_tool_end("file_read", result)
+    Loop->>Permission: check(tool, tool_input)
+    Permission->>Permission: is_read_only is True
+    Permission-->>Loop: ALLOW
 
-        Loop->>Loop: 将工具结果加入 messages
-        
-        Note over Loop,Tool: 回到循环顶部 ↑↑↑
+    Loop->>CLI: callbacks.on_tool_start
+    Loop->>Tool: FileReadTool.call(file_path)
+    Tool-->>Loop: ToolResult with file content
+    Loop->>CLI: callbacks.on_tool_end
 
-        Loop->>Provider: send_message(含工具结果的 messages)
-        Provider->>LLM: 第二次请求（带文件内容）
-        LLM-->>Provider: "这是 main.py 的内容分析..."
-        Provider-->>CLI: on_text_delta(分析文本) → 实时显示
-        Provider-->>Loop: APIResponse(stop_reason="end_turn")
-        
-        Loop->>Loop: stop_reason != "tool_use" → 退出循环
-    end
+    Loop->>Loop: Append tool result to messages
 
-    Note over User,Tool: ===== 第五阶段：返回结果 =====
+    Note over User,Tool: Phase 5 - Second LLM Call
 
-    Loop->>Loop: _extract_final_text(messages)
-    Loop-->>Engine: LoopResult(final_text, turns_used, total_tokens)
-    Engine->>Engine: 更新 usage 统计
-    Engine-->>CLI: 返回 LoopResult
-    CLI->>CLI: 打印 token 消耗统计
-    CLI-->>User: 显示完整回复
+    Loop->>Provider: send_message with tool results
+    Provider->>LLM: Second request with file content
+    LLM-->>Provider: Final text response
+    Provider-->>CLI: on_text_delta callback
+    Provider-->>Loop: APIResponse stop_reason is end_turn
+
+    Loop->>Loop: Exit loop
+
+    Note over User,Tool: Phase 6 - Return Result
+
+    Loop->>Loop: _extract_final_text
+    Loop-->>Engine: LoopResult
+    Engine->>Engine: Update usage stats
+    Engine-->>CLI: Return LoopResult
+    CLI-->>User: Display response
 ```
 
----
-
-## 思维导图版
+## 流程分层图
 
 ```mermaid
-mindmap
-  root((用户提问))
-    1. CLI 入口
-      main()
-      async_main()
-      run_chat(engine, input)
-        创建 callbacks
-        调用 engine.chat()
-    2. Engine 编排
-      chat(user_input, callbacks)
-        添加消息到 messages
-        调用 context_builder.build()
-        检查 _should_compact()
-        调用 loop.run()
-        更新 usage 统计
-    3. Context 构建
-      build()
-        基础人设 BASE_SYSTEM_PROMPT
-        环境信息 _build_environment_context()
-        项目知识 _load_project_knowledge()
-        Git 状态 _get_git_status()
-        工具指南 _get_tool_guidelines()
-        用户自定义 custom_prompt
-    4. Agentic Loop 核心循环
-      run(system_prompt, messages)
-        while turns < max_turns
-          Step1: provider.send_message()
-          Step2: 解析响应 → assistant message
-          Step3: 检查 stop_reason
-            end_turn → 退出循环
-            tool_use → 继续执行工具
-          Step4: _execute_tool()
-            权限检查 permission.check()
-              Allow → 执行
-              Ask → 询问用户
-              Deny → 拒绝
-            tool.call() 执行工具
-            收集 ToolResult
-          Step5: 工具结果加入 messages
-          回到 Step1
-    5. Provider 通信
-      send_message()
-        _convert_messages() 格式转换
-        HTTP 流式请求到 LLM
-        解析流式 chunks
-        组装 APIResponse
-    6. 工具执行
-      ToolRegistry.get(name)
-      Tool.call(**kwargs)
-        FileReadTool → 读文件
-        BashTool → 执行命令
-        GrepTool → 搜索代码
-    7. 返回结果
-      _extract_final_text()
-      LoopResult → Engine → CLI → 用户
+graph TD
+    A[User Input] --> B[cli/main.py: run_chat]
+    B --> C[engine/engine.py: chat]
+    C --> D[context/builder.py: build]
+    D --> D1[_build_environment_context]
+    D --> D2[_load_project_knowledge]
+    D --> D3[_get_git_status]
+    D --> D4[_get_tool_guidelines]
+    D1 --> E[Return System Prompt]
+    D2 --> E
+    D3 --> E
+    D4 --> E
+    E --> F[engine: _should_compact]
+    F --> G[loop/loop.py: run]
+
+    G --> H{While Loop}
+    H --> I[Provider: send_message]
+    I --> J[LLM API Call - Streaming]
+    J --> K{stop_reason?}
+
+    K -->|end_turn| L[Exit Loop]
+    K -->|tool_use| M[_execute_tool]
+
+    M --> N[permissions/manager.py: check]
+    N --> N1{Decision?}
+    N1 -->|Allow| O[Tool.call]
+    N1 -->|Ask| P[Ask User via callback]
+    N1 -->|Deny| Q[Return Permission Denied]
+    P -->|Yes| O
+    P -->|No| Q
+
+    O --> R[Return ToolResult]
+    R --> S[Append to messages]
+    S --> H
+
+    L --> T[_extract_final_text]
+    T --> U[Return LoopResult]
+    U --> V[engine: Update usage]
+    V --> W[cli: Display to User]
+```
+
+## 数据变换流程
+
+```mermaid
+graph LR
+    A[User text string] -->|Message role=USER| B[messages list]
+    B -->|+ System Prompt + Tool defs| C[Provider._convert_messages]
+    C -->|OpenAI API format| D[HTTP Request to LLM]
+    D -->|Stream chunks| E[APIResponse]
+    E -->|ToolUseContent| F[_execute_tool]
+    F -->|Permission check| G[Tool.call]
+    G -->|ToolResult| H[ToolResultContent]
+    H -->|Message role=USER| B
+    E -->|TextContent on end_turn| I[LoopResult.final_text]
+    I -->|Display| J[User sees response]
 ```
 
 ---
 
-## 简化版：一句话总结
+## 文字版流程总结
 
 ```
-用户输入 → CLI.run_chat() → Engine.chat()
-  → ContextBuilder.build() 组装 System Prompt
-  → AgenticLoop.run() 进入循环
-    → Provider.send_message() 调用 LLM
-    → LLM 返回工具调用 → Permission.check() 权限检查
-    → Tool.call() 执行工具 → 结果回传 LLM
-    → LLM 生成最终回复
-  → 返回 LoopResult → CLI 展示给用户
-```
-
-## 关键数据流
-
-```
-EngineConfig → QueryEngine.__init__()
-  → create_provider() → BaseProvider 实例
-  → create_default_tool_registry() → ToolRegistry (6个工具)
-  → PermissionManager (权限规则)
-  → ContextBuilder (项目根目录)
-  → AgenticLoop (组合以上所有)
-
-用户文本 → Message(role=USER)
-  → [System Prompt + Messages + Tools] → LLM API
-  → APIResponse → [TextContent | ToolUseContent]
-  → ToolUseContent → Permission → Tool.call()
-  → ToolResult → ToolResultContent → Message(role=USER)
-  → 再次发给 LLM → 最终 TextContent
-  → LoopResult.final_text → 显示给用户
+1. 用户输入文本
+   ↓
+2. cli/main.py: run_chat() 创建 callbacks, 调用 engine.chat()
+   ↓
+3. engine/engine.py: chat()
+   - 将用户消息加入 messages
+   - 调用 context_builder.build() 组装 System Prompt
+   - 检查 _should_compact() 是否需要压缩
+   - 调用 loop.run() 进入循环
+   ↓
+4. loop/loop.py: run() — 核心循环
+   ┌─────────────────────────────────────────────────────┐
+   │ while turns < max_turns:                             │
+   │   a. provider.send_message() → 调 LLM API (流式)     │
+   │   b. 解析响应 → 加入 messages                        │
+   │   c. 如果 stop_reason == end_turn → 退出循环         │
+   │   d. 如果 stop_reason == tool_use:                   │
+   │      - permission_manager.check() → Allow/Ask/Deny   │
+   │      - tool.call() → 执行工具                        │
+   │      - 工具结果加入 messages                          │
+   │      - 回到 a                                        │
+   └─────────────────────────────────────────────────────┘
+   ↓
+5. _extract_final_text() → 提取最终文本
+   ↓
+6. 返回 LoopResult → engine 更新统计 → cli 显示给用户
 ```
