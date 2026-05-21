@@ -1,55 +1,123 @@
-# Mini Agent Framework (Python)
+# Mini Agent Framework
 
-> 基于 Claude Code 架构精简的 AI Agent 开发框架 — Python 版
+> 基于 Claude Code 架构精简的 AI Agent 开发框架 — 支持 Claude / GPT / DeepSeek / MiMo / Qwen / Gemini / 本地模型
+
+## 特性
+
+- **多模型支持** — 一套代码，接入任意大模型（只要兼容 OpenAI 或 Anthropic 格式）
+- **Agentic Loop** — ReAct 模式的核心循环：思考 → 行动 → 观察 → 循环
+- **6 个内置工具** — 文件读写编辑 + Shell 命令 + 代码搜索，开箱即用
+- **权限控制** — Allow / Ask / Deny 三级权限，防止 AI 执行危险操作
+- **动态上下文** — System Prompt 根据环境、项目知识、Git 状态实时组装
+- **自动压缩** — 长对话不爆 token，自动总结历史
+- **极简依赖** — 仅依赖 `anthropic` + `openai` 两个 SDK
+- **Python 3.10+** — 全异步设计，类型完备
+
+---
 
 ## 架构概览
 
 ```
-┌─────────────────────────────────────────┐
-│         CLI Layer (cli/)                │
-│      REPL 交互 / 流式输出 / 命令解析      │
-├─────────────────────────────────────────┤
-│       Engine Layer (engine/)             │
-│    会话管理 / token 追踪 / 自动压缩       │
-├─────────────────────────────────────────┤
-│        Loop Layer (loop/)                │
-│   Agentic Loop: 请求→响应→工具→请求      │
-├─────────────────────────────────────────┤
-│       Tool Layer (tools/)                │
-│  file_read/write/edit + bash + grep/glob │
-├─────────────────────────────────────────┤
-│    Permission Layer (permissions/)        │
-│      Allow / Ask / Deny 三级权限         │
-├─────────────────────────────────────────┤
-│     Context Layer (context/)             │
-│   System Prompt 动态组装 (环境+项目+Git)   │
-├─────────────────────────────────────────┤
-│         API Layer (api/)                 │
-│       Anthropic SDK 流式通信             │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│              CLI Layer (cli/)                     │
+│         REPL 交互 / 流式输出 / 斜杠命令            │
+├──────────────────────────────────────────────────┤
+│            Engine Layer (engine/)                 │
+│       会话管理 / token 追踪 / 自动压缩             │
+├──────────────────────────────────────────────────┤
+│             Loop Layer (loop/)                    │
+│    Agentic Loop: 请求 → 响应 → 工具执行 → 请求    │
+├──────────────────────────────────────────────────┤
+│            Tool Layer (tools/)                    │
+│   file_read / file_write / file_edit / bash       │
+│   glob / grep — 可插拔扩展                        │
+├──────────────────────────────────────────────────┤
+│         Permission Layer (permissions/)           │
+│           Allow / Ask / Deny 三级权限             │
+├──────────────────────────────────────────────────┤
+│           Context Layer (context/)                │
+│    System Prompt 动态组装 (环境 + 项目 + Git)      │
+├──────────────────────────────────────────────────┤
+│             API Layer (api/)                      │
+│  ┌───────────────────────────────────────────┐   │
+│  │           BaseProvider (统一接口)           │   │
+│  ├───────────────────┬───────────────────────┤   │
+│  │ AnthropicProvider │   OpenAIProvider      │   │
+│  │    (Claude)       │ (GPT/DeepSeek/MiMo/  │   │
+│  │                   │  Qwen/GLM/Gemini/    │   │
+│  │                   │  Ollama/OpenRouter)   │   │
+│  └───────────────────┴───────────────────────┘   │
+└──────────────────────────────────────────────────┘
 ```
+
+---
 
 ## 快速开始
 
+### 安装
+
 ```bash
-# 1. 安装
+git clone https://github.com/jycicy/claude-mini.git
+cd claude-mini
 pip install -e .
+```
 
-# 2. 设置 API Key
-export ANTHROPIC_API_KEY=sk-ant-api03-...
+### 运行
 
-# 3. 运行
+```bash
+# 用 DeepSeek（推荐国内用户）
+export PROVIDER=deepseek API_KEY=sk-your-deepseek-key
+mini-agent
+
+# 用 Claude
+export PROVIDER=anthropic API_KEY=sk-ant-your-key
+mini-agent
+
+# 用 GPT-4o
+export PROVIDER=openai API_KEY=sk-your-openai-key MODEL=gpt-4o
+mini-agent
+
+# 用 MiMo（小米）
+export PROVIDER=mimo API_KEY=sk-your-mimo-key
+mini-agent
+
+# 用本地 Ollama（免费）
+export PROVIDER=ollama MODEL=llama3
 mini-agent
 ```
 
-## 配置环境变量
+---
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `ANTHROPIC_API_KEY` | (必填) | Anthropic API Key |
-| `MODEL` | `claude-sonnet-4-20250514` | 使用的模型 |
-| `MAX_TURNS` | `25` | 最大循环次数 |
-| `MAX_TOKENS` | `4096` | 单次请求最大输出 token |
+## 支持的模型
+
+| Provider 名 | 模型示例 | base_url（自动配置） |
+|-------------|---------|---------------------|
+| `anthropic` | claude-sonnet-4-20250514 | https://api.anthropic.com |
+| `openai` | gpt-4o, gpt-4-turbo | https://api.openai.com/v1 |
+| `deepseek` | deepseek-v4-pro, deepseek-v4-flash | https://api.deepseek.com/v1 |
+| `mimo` | mimo-v2.5-pro, mimo-v2-flash | https://api.mimo.xiaomi.com/v1 |
+| `qwen` | qwen-max, qwen-plus | https://dashscope.aliyuncs.com/compatible-mode/v1 |
+| `glm` | glm-4 | https://open.bigmodel.cn/api/paas/v4 |
+| `openrouter` | 任意模型（400+可选） | https://openrouter.ai/api/v1 |
+| `siliconflow` | deepseek-ai/DeepSeek-V3 | https://api.siliconflow.cn/v1 |
+| `ollama` | llama3, qwen2, mistral | http://localhost:11434/v1 |
+
+> 任何兼容 OpenAI `/v1/chat/completions` 格式的模型都可以接入！只需设置 `PROVIDER=openai BASE_URL=你的地址 MODEL=模型名`
+
+---
+
+## 环境变量
+
+| 变量 | 说明 | 示例 |
+|------|------|------|
+| `PROVIDER` | Provider 类型 | `deepseek` / `openai` / `anthropic` / `mimo` / `ollama` |
+| `API_KEY` | API 密钥（也支持 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`） | `sk-...` |
+| `MODEL` | 模型名（不填则用 provider 默认值） | `deepseek-v4-pro` |
+| `BASE_URL` | 自定义 API 地址（不填则用 provider 默认值） | `https://api.deepseek.com/v1` |
+| `MAX_TURNS` | 最大循环次数（默认 25） | `10` |
+| `MAX_TOKENS` | 最大输出 token 数（默认 4096） | `8192` |
+
+---
 
 ## 作为库使用
 
@@ -59,92 +127,175 @@ from mini_agent import QueryEngine
 from mini_agent.types import EngineConfig
 
 async def main():
+    # DeepSeek V4 Pro
     engine = QueryEngine(EngineConfig(
-        api_key="sk-ant-...",
-        model="claude-sonnet-4-20250514",
+        provider="openai",
+        api_key="sk-your-key",
+        model="deepseek-v4-pro",
+        base_url="https://api.deepseek.com/v1",
         project_root="/path/to/project",
     ))
 
-    result = await engine.chat("帮我列出所有 Python 文件")
+    result = await engine.chat("帮我找到项目中所有未使用的导入并删除")
     print(result.final_text)
+    print(f"消耗: {result.total_tokens.input_tokens} in / {result.total_tokens.output_tokens} out")
 
 asyncio.run(main())
 ```
 
-## 目录说明
+### 自定义工具
+
+```python
+from mini_agent.tools.base import Tool
+from mini_agent.types import ToolResult
+
+class MyDatabaseTool(Tool):
+    @property
+    def name(self) -> str:
+        return "query_db"
+
+    @property
+    def description(self) -> str:
+        return "Execute a SQL query against the project database"
+
+    @property
+    def input_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {"sql": {"type": "string", "description": "SQL query to execute"}},
+            "required": ["sql"],
+        }
+
+    @property
+    def is_read_only(self) -> bool:
+        return True
+
+    async def call(self, **kwargs) -> ToolResult:
+        sql = kwargs["sql"]
+        # ... 执行查询 ...
+        return ToolResult(content="查询结果: ...")
+
+# 注册到引擎
+engine.register_tool(MyDatabaseTool())
+```
+
+---
+
+## 项目结构
 
 ```
 claude-mini/
 ├── src/mini_agent/
-│   ├── __init__.py           # 库入口（export 所有公开接口）
-│   ├── types.py              # 核心类型定义（所有模块共享）
+│   ├── __init__.py               # 库入口
+│   ├── types.py                  # 核心类型定义
 │   ├── api/
-│   │   └── client.py         # LLM 通信（封装 Anthropic SDK）
+│   │   ├── base.py               # Provider 基类 + 工厂函数
+│   │   ├── anthropic_provider.py # Claude 适配器
+│   │   └── openai_provider.py    # OpenAI 格式万能适配器
 │   ├── tools/
-│   │   ├── __init__.py       # 工具注册入口
-│   │   ├── base.py           # Tool 抽象基类 + ToolRegistry
-│   │   ├── file_read.py      # 文件读取
-│   │   ├── file_write.py     # 文件写入
-│   │   ├── file_edit.py      # 文件编辑（精准替换）
-│   │   ├── bash.py           # Shell 命令执行
-│   │   ├── glob.py           # 文件搜索
-│   │   └── grep.py           # 内容搜索
+│   │   ├── base.py               # Tool 抽象基类 + Registry
+│   │   ├── file_read.py          # 文件读取
+│   │   ├── file_write.py         # 文件写入
+│   │   ├── file_edit.py          # 精准编辑（字符串替换）
+│   │   ├── bash.py               # Shell 命令执行
+│   │   ├── glob.py               # 文件模式搜索
+│   │   └── grep.py               # 内容正则搜索
 │   ├── loop/
-│   │   └── loop.py           # Agentic Loop（核心循环）
+│   │   └── loop.py               # Agentic Loop（核心循环）
 │   ├── context/
-│   │   └── builder.py        # System Prompt 动态组装
+│   │   └── builder.py            # System Prompt 动态组装
 │   ├── engine/
-│   │   └── engine.py         # 会话引擎（QueryEngine）
+│   │   └── engine.py             # 会话引擎 (QueryEngine)
 │   ├── permissions/
-│   │   └── manager.py        # 权限管理
+│   │   └── manager.py            # 权限管理
 │   └── cli/
-│       └── main.py           # REPL 命令行界面
-├── AGENT.md                  # 项目知识文件（会注入 System Prompt）
-├── pyproject.toml            # 项目配置
+│       └── main.py               # REPL 命令行入口
+├── AGENT.md                      # 项目知识（自动注入 Prompt）
+├── pyproject.toml
 └── README.md
 ```
 
+---
 
+## 核心概念
 
-## 核心概念对照表
+### Agentic Loop（核心循环）
 
-| Claude Code (原版) | Mini Agent (本框架) | 说明 |
-|-------------------|--------------------|----- |
-| `src/services/api/claude.ts` | `api/client.py` | API 通信 |
-| `src/Tool.ts` + `src/tools.ts` | `tools/base.py` + `__init__.py` | 工具系统 |
-| `src/query.ts` (1700行) | `loop/loop.py` | Agentic Loop |
+```
+while 未完成 and 未超限:
+    1. 发送消息给 LLM（带工具定义）
+    2. LLM 回复（可能包含工具调用请求）
+    3. 如果有工具调用 → 权限检查 → 执行 → 结果回传
+    4. 如果无工具调用 → 任务完成，退出
+```
+
+### Tool（工具）
+
+AI 不能直接操作文件系统，工具是 AI 的"双手"。每个工具有统一接口：
+- `name` — 唯一标识
+- `description` — AI 根据这个决定用哪个工具
+- `input_schema` — 参数定义
+- `call()` — 实际执行逻辑
+
+### Permission（权限）
+
+每次工具调用都经过裁决：
+- **Allow** — 自动放行（只读工具、安全命令）
+- **Ask** — 询问用户确认（写操作、未知命令）
+- **Deny** — 直接拒绝（危险命令如 `rm -rf /`）
+
+### Context（上下文）
+
+System Prompt 不是静态文本，而是动态组装：
+```
+基础人设 + 环境信息 + 项目知识(AGENT.md) + Git状态 + 工具指南
+```
+
+---
+
+## 与 Claude Code 的对照
+
+| Claude Code (原版 5000+ 模块) | Mini Agent (本框架) | 说明 |
+|------------------------------|--------------------|----- |
+| `src/services/api/` (3400行) | `api/base.py` + providers | 多 Provider API 通信 |
+| `src/Tool.ts` + `src/tools.ts` | `tools/base.py` + 6 个工具 | 工具系统 |
+| `src/query.ts` (1700行) | `loop/loop.py` (~200行) | Agentic Loop |
 | `src/context.ts` | `context/builder.py` | 上下文组装 |
-| `src/QueryEngine.ts` (1300行) | `engine/engine.py` | 会话引擎 |
-| `src/utils/permissions/` (6300行) | `permissions/manager.py` | 权限控制 |
-| `src/entrypoints/cli.tsx` (React/Ink) | `cli/main.py` (asyncio) | CLI 入口 |
+| `src/QueryEngine.ts` (1300行) | `engine/engine.py` (~180行) | 会话引擎 |
+| `src/utils/permissions/` (6300行) | `permissions/manager.py` (~120行) | 权限控制 |
+| `src/entrypoints/cli.tsx` (React/Ink) | `cli/main.py` (asyncio readline) | CLI 入口 |
 
-## 学习顺序建议
+---
+
+## 学习路线
 
 | 顺序 | 文件 | 学什么 |
-|------|------|--------|
-| 1 | `types.py` | 理解所有核心类型（Message、Tool、Permission） |
-| 2 | `loop/loop.py` | **Agentic Loop** — Agent 的灵魂 (while 循环) |
-| 3 | `tools/base.py` + 任意一个工具 | Tool 统一接口怎么设计 |
-| 4 | `context/builder.py` | System Prompt 怎么动态组装 |
-| 5 | `permissions/manager.py` | 权限系统 Allow/Ask/Deny |
-| 6 | `engine/engine.py` | 引擎如何编排一切 |
-| 7 | `cli/main.py` | 入口如何连接到引擎 |
+|:----:|------|--------|
+| 1 | `types.py` | 理解核心类型：Message、Tool、Permission |
+| 2 | `loop/loop.py` | **Agentic Loop** — Agent 的灵魂 |
+| 3 | `tools/base.py` + `bash.py` | Tool 统一接口设计 |
+| 4 | `api/base.py` + `openai_provider.py` | 多 Provider 适配模式 |
+| 5 | `context/builder.py` | System Prompt 动态组装 |
+| 6 | `permissions/manager.py` | 权限系统 Allow/Ask/Deny |
+| 7 | `engine/engine.py` | 引擎如何编排一切 |
+| 8 | `cli/main.py` | 入口如何连接到引擎 |
+
+---
 
 ## 后续扩展方向
 
-学会这个框架后，你可以逐步添加：
+- [ ] **子代理系统** — Agent 派生子 Agent 处理子任务
+- [ ] **MCP 协议** — 动态连接外部工具服务器
+- [ ] **会话持久化** — 保存/恢复对话
+- [ ] **Web API** — FastAPI 包装 HTTP 接口
+- [ ] **Hook 系统** — 工具执行前后插入自定义逻辑
+- [ ] **YOLO 分类器** — 智能识别安全命令自动放行
+- [ ] **并行工具执行** — 边接收流式响应边执行工具
+- [ ] **记忆系统** — 跨会话记忆
+- [ ] **流式 UI** — Rich / Textual 终端界面
 
-1. **自定义工具** — 比如数据库查询工具、HTTP 请求工具
-2. **子代理系统** — 让 Agent 派生子 Agent 处理子任务
-3. **MCP 协议支持** — 动态连接外部工具服务器
-4. **会话持久化** — 保存/恢复对话
-5. **Web API** — 用 FastAPI 包一层 HTTP 接口
-6. **多 Provider** — 支持 OpenAI / Bedrock / Vertex
-7. **Hook 系统** — 工具执行前后插入自定义逻辑
-8. **YOLO 分类器** — 自动识别安全命令并放行
-9. **流式工具执行** — 边接收响应边执行工具（并行）
-10. **记忆系统** — 让 Agent 记住跨会话的信息
+---
 
 ## License
 
-MIT — 仅供学习研究。Claude Code 架构设计归 Anthropic 所有。
+MIT — 仅供学习研究。Claude Code 架构设计归 [Anthropic](https://www.anthropic.com/) 所有。
