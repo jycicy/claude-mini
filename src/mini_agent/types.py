@@ -106,21 +106,85 @@ class PermissionRule:
 
 
 # ============================================================
-# Engine 配置类型
+# Provider 配置类型
 # ============================================================
+
+
+class ProviderType(str, Enum):
+    """支持的 Provider 类型"""
+
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
 
 
 @dataclass
 class EngineConfig:
-    """会话引擎配置"""
+    """
+    会话引擎配置
 
+    支持多种使用方式：
+
+    1. Claude（默认）:
+        EngineConfig(api_key="sk-ant-...")
+
+    2. DeepSeek:
+        EngineConfig(
+            provider="openai",
+            api_key="sk-...",
+            model="deepseek-v4-pro",
+            base_url="https://api.deepseek.com/v1",
+        )
+
+    3. MiMo:
+        EngineConfig(
+            provider="openai",
+            api_key="sk-...",
+            model="mimo-v2.5-pro",
+            base_url="https://api.mimo.xiaomi.com/v1",
+        )
+
+    4. GPT:
+        EngineConfig(
+            provider="openai",
+            api_key="sk-...",
+            model="gpt-4o",
+        )
+
+    5. OpenRouter（一个 key 调所有模型）:
+        EngineConfig(
+            provider="openai",
+            api_key="sk-or-...",
+            model="deepseek/deepseek-v4-pro",
+            base_url="https://openrouter.ai/api/v1",
+        )
+
+    6. 本地 Ollama:
+        EngineConfig(
+            provider="openai",
+            api_key="ollama",
+            model="llama3",
+            base_url="http://localhost:11434/v1",
+        )
+    """
+
+    # --- 必填 ---
     api_key: str
+
+    # --- Provider 配置 ---
+    provider: str = "anthropic"  # "anthropic" 或 "openai"
     model: str = "claude-sonnet-4-20250514"
+    base_url: str | None = None  # 自定义 API 地址
+
+    # --- Agent 行为 ---
     max_turns: int = 25
     max_tokens: int = 4096
     project_root: str = "."
     custom_system_prompt: str | None = None
+
+    # --- 权限 ---
     permission_rules: list[PermissionRule] = field(default_factory=list)
+
+    # --- 自动压缩 ---
     auto_compact: bool = True
     compact_threshold: int = 80000
 

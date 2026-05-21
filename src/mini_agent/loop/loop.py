@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mini_agent.api.client import APIClient
+from mini_agent.api.base import BaseProvider
 from mini_agent.permissions.manager import PermissionManager
 from mini_agent.tools.base import ToolRegistry
 from mini_agent.types import (
@@ -47,7 +47,7 @@ class AgenticLoop:
 
     def __init__(
         self,
-        api_client: APIClient,
+        api_client: BaseProvider,
         tool_registry: ToolRegistry,
         permission_manager: PermissionManager,
     ) -> None:

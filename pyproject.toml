@@ -1,10 +1,11 @@
 [project]
 name = "mini-agent"
-version = "0.1.0"
-description = "A minimal AI Agent framework inspired by Claude Code architecture"
+version = "0.2.0"
+description = "A minimal AI Agent framework inspired by Claude Code architecture — multi-model support"
 requires-python = ">=3.10"
 dependencies = [
     "anthropic>=0.39.0",
+    "openai>=1.40.0",
 ]
 
 [project.optional-dependencies]

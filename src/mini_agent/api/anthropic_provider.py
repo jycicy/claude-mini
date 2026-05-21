@@ -1,90 +1,54 @@
 """
-通信层 — LLM API 客户端
+Anthropic Provider — Claude 系列模型
 
-对应 Claude Code 的 src/services/api/client.ts + claude.ts
-
-职责：
-1. 封装 Anthropic SDK 调用
-2. 流式接收响应
-3. 统一输出格式（无论底层用什么 Provider）
-
-设计思想：
-- 上层（Loop 层）不需要知道 API 的具体细节
-- 流式优先：逐 token 返回，让 UI 可以实时展示
-- 错误分类：区分可重试/不可重试错误
+使用 Anthropic 官方 SDK 通信。
+支持通过 base_url 连接兼容 Anthropic 协议的第三方服务（如 DeepSeek 的 /anthropic 端点）。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import anthropic
 
+from mini_agent.api.base import APIResponse, BaseProvider
 from mini_agent.types import (
     ContentBlock,
     Message,
     Role,
     TextContent,
-    ToolDefinition,
-    ToolUseContent,
     TokenUsage,
+    ToolDefinition,
+    ToolResultContent,
+    ToolUseContent,
 )
 
 
-# ============================================================
-# 配置
-# ============================================================
-
-
-@dataclass
-class APIClientConfig:
-    """API 客户端配置"""
-
-    api_key: str
-    model: str = "claude-sonnet-4-20250514"
-    max_tokens: int = 4096
-    base_url: str | None = None
-
-
-# ============================================================
-# 响应类型
-# ============================================================
-
-
-@dataclass
-class APIResponse:
-    """API 响应"""
-
-    # AI 返回的内容块列表
-    content: list[ContentBlock] = field(default_factory=list)
-    # 停止原因: end_turn=主动结束, tool_use=需要调用工具, max_tokens=超长
-    stop_reason: str = "end_turn"
-    # 本次请求消耗的 token
-    usage: TokenUsage = field(default_factory=TokenUsage)
-
-
-# ============================================================
-# API 客户端
-# ============================================================
-
-
-class APIClient:
+class AnthropicProvider(BaseProvider):
     """
-    Anthropic API 客户端
+    Anthropic Provider
 
-    封装所有与 LLM 的通信。整个框架的"网络出口"——
-    所有与大模型的交互都经过这里。
+    适用于：
+    - Claude 官方 API (https://api.anthropic.com)
+    - 兼容 Anthropic 协议的第三方（如 DeepSeek /anthropic 端点）
     """
 
-    def __init__(self, config: APIClientConfig) -> None:
-        kwargs: dict[str, Any] = {"api_key": config.api_key}
-        if config.base_url:
-            kwargs["base_url"] = config.base_url
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str = "claude-sonnet-4-20250514",
+        max_tokens: int = 4096,
+        base_url: str | None = None,
+    ) -> None:
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
 
         self._client = anthropic.Anthropic(**kwargs)
-        self._model = config.model
-        self._max_tokens = config.max_tokens
+        self._model = model
+        self._max_tokens = max_tokens
+        self._base_url = base_url
 
     async def send_message(
         self,
@@ -94,21 +58,7 @@ class APIClient:
         tools: list[ToolDefinition] | None = None,
         on_text_delta: Callable[[str], None] | None = None,
     ) -> APIResponse:
-        """
-        发送消息并流式接收响应
-
-        这是整个框架的"网络出口"——所有与 LLM 的通信都经过这里
-
-        Args:
-            system_prompt: 系统提示词（动态组装的）
-            messages: 对话历史
-            tools: 可用工具列表（AI 根据这个决定调用哪些工具）
-            on_text_delta: 文本流回调（用于实时展示）
-
-        Returns:
-            APIResponse: 包含内容块、停止原因和 token 使用量
-        """
-        # 转换消息格式为 Anthropic SDK 要求的格式
+        """发送消息到 Anthropic API"""
         api_messages = self._convert_messages(messages)
 
         # 构建请求参数
@@ -130,18 +80,16 @@ class APIClient:
                 for t in tools
             ]
 
-        # 使用流式 API
+        # 流式调用
         content_blocks: list[ContentBlock] = []
 
         with self._client.messages.stream(**request_params) as stream:
             for text in stream.text_stream:
                 if on_text_delta:
                     on_text_delta(text)
-
-            # 获取最终完整消息
             response = stream.get_final_message()
 
-        # 解析响应内容
+        # 解析响应
         for block in response.content:
             if block.type == "text":
                 content_blocks.append(TextContent(text=block.text))
@@ -164,20 +112,16 @@ class APIClient:
         )
 
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """将内部 Message 格式转换为 Anthropic API 格式"""
+        """将内部消息格式转换为 Anthropic API 格式"""
         api_messages: list[dict[str, Any]] = []
 
         for msg in messages:
             if msg.role == Role.SYSTEM:
-                continue  # system 消息通过 system 参数传递
+                continue
 
             if isinstance(msg.content, str):
-                api_messages.append({
-                    "role": msg.role.value,
-                    "content": msg.content,
-                })
+                api_messages.append({"role": msg.role.value, "content": msg.content})
             else:
-                # 转换 ContentBlock 列表为 API 格式
                 content_list: list[dict[str, Any]] = []
                 for block in msg.content:
                     if isinstance(block, TextContent):
@@ -189,28 +133,25 @@ class APIClient:
                             "name": block.name,
                             "input": block.input,
                         })
-                    elif hasattr(block, "tool_use_id"):
-                        # ToolResultContent
+                    elif isinstance(block, ToolResultContent):
                         content_list.append({
                             "type": "tool_result",
                             "tool_use_id": block.tool_use_id,
                             "content": block.content,
                             **({"is_error": True} if block.is_error else {}),
                         })
-
-                api_messages.append({
-                    "role": msg.role.value,
-                    "content": content_list,
-                })
+                api_messages.append({"role": msg.role.value, "content": content_list})
 
         return api_messages
 
     @property
     def model(self) -> str:
-        """获取当前模型名称"""
         return self._model
 
     @model.setter
     def model(self, value: str) -> None:
-        """动态切换模型（用于子代理场景或 fallback）"""
         self._model = value
+
+    @property
+    def provider_name(self) -> str:
+        return "anthropic"

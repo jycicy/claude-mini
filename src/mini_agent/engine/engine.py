@@ -5,12 +5,12 @@
 
 设计思想：
 - 这是"会话导演"，管理整个对话的生命周期
-- 它不关心 API 调用细节（交给 APIClient）
+- 它不关心 API 调用细节（交给 Provider）
 - 它不关心工具执行细节（交给 Loop）
 - 它关心的是：上下文构建、状态管理、token 追踪、自动压缩
 
 职责：
-1. 初始化各组件（API 客户端、工具注册表、权限管理器、上下文构建器）
+1. 根据 provider 配置初始化对应的 API 客户端
 2. 管理对话历史
 3. 追踪 token 消耗
 4. 触发自动压缩
@@ -19,9 +19,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
-from mini_agent.api.client import APIClient, APIClientConfig
+from mini_agent.api.base import BaseProvider, create_provider
 from mini_agent.context.builder import ContextBuilder
 from mini_agent.loop.loop import AgenticLoop
 from mini_agent.permissions.manager import PermissionManager
@@ -51,12 +52,33 @@ class QueryEngine:
     """
     会话引擎 — 整个框架对外暴露的核心接口
 
-    对应 Claude Code 的 QueryEngine.ts
+    支持多 Provider 的统一入口：
 
-    用法：
+        # Claude（默认）
         engine = QueryEngine(EngineConfig(api_key="sk-ant-..."))
-        result = await engine.chat("帮我列出所有 Python 文件")
-        print(result.final_text)
+
+        # DeepSeek
+        engine = QueryEngine(EngineConfig(
+            provider="openai",
+            api_key="sk-...",
+            model="deepseek-v4-pro",
+            base_url="https://api.deepseek.com/v1",
+        ))
+
+        # MiMo
+        engine = QueryEngine(EngineConfig(
+            provider="openai",
+            api_key="sk-...",
+            model="mimo-v2.5-pro",
+            base_url="https://api.mimo.xiaomi.com/v1",
+        ))
+
+        # GPT-4o
+        engine = QueryEngine(EngineConfig(
+            provider="openai",
+            api_key="sk-...",
+            model="gpt-4o",
+        ))
     """
 
     def __init__(self, config: EngineConfig | None = None, **kwargs) -> None:
@@ -64,20 +86,20 @@ class QueryEngine:
         初始化会话引擎
 
         可以传入 EngineConfig 对象，也可以用关键字参数：
-            engine = QueryEngine(api_key="...", model="...", project_root=".")
+            engine = QueryEngine(api_key="...", provider="openai", model="...")
         """
         if config is None:
             config = EngineConfig(**kwargs)
 
         self._config = config
 
-        # 1. 初始化 API 客户端
-        self._api_client = APIClient(
-            APIClientConfig(
-                api_key=config.api_key,
-                model=config.model,
-                max_tokens=config.max_tokens,
-            )
+        # 1. 根据 provider 配置创建对应的 API 客户端
+        self._provider: BaseProvider = create_provider(
+            provider=config.provider,
+            api_key=config.api_key,
+            model=config.model,
+            max_tokens=config.max_tokens,
+            base_url=config.base_url,
         )
 
         # 2. 初始化上下文构建器
@@ -92,9 +114,9 @@ class QueryEngine:
         # 4. 初始化权限管理器
         self._permission_manager = PermissionManager(config.permission_rules)
 
-        # 5. 组装 Agentic Loop
+        # 5. 组装 Agentic Loop（使用 Provider 替代旧的 APIClient）
         self._loop = AgenticLoop(
-            api_client=self._api_client,
+            api_client=self._provider,
             tool_registry=self._tool_registry,
             permission_manager=self._permission_manager,
         )
@@ -146,27 +168,15 @@ class QueryEngine:
         return result
 
     def _should_compact(self) -> bool:
-        """
-        自动压缩检测
-
-        对应 Claude Code 的 autoCompact.ts
-        当对话历史太长时，需要"总结"之前的内容，
-        释放 token 空间，让对话可以持续进行。
-        """
+        """自动压缩检测"""
         estimated = self._estimate_tokens()
         return estimated > self._config.compact_threshold
 
     def _compact(self) -> None:
-        """
-        执行压缩
-
-        简化版：将历史消息总结为一条 system 消息
-        生产版应该用 LLM 来生成总结
-        """
+        """执行压缩（简化版）"""
         if len(self._messages) < 4:
             return
 
-        # 保留最近的 4 条消息，其余压缩
         remaining = self._messages[-4:]
         summary = (
             f"[Previous conversation summary: {len(self._messages) - 4} messages "
@@ -189,7 +199,6 @@ class QueryEngine:
             if isinstance(msg.content, str):
                 char_count += len(msg.content)
             else:
-                import json
                 char_count += len(json.dumps([vars(b) for b in msg.content], default=str))
         return char_count // 4
 
@@ -206,6 +215,11 @@ class QueryEngine:
     def usage(self) -> UsageStats:
         """获取 token 消耗统计"""
         return self._usage
+
+    @property
+    def provider_info(self) -> str:
+        """获取当前 Provider 信息"""
+        return f"{self._provider.provider_name}:{self._provider.model}"
 
     def reset(self) -> None:
         """清空对话历史"""
