@@ -78,29 +78,71 @@ cd claude-mini
 pip install -e .
 ```
 
+### 配置
+
+在项目目录或用户主目录创建 `.mini` 配置文件：
+
+```toml
+# .mini — DeepSeek 配置示例（推荐国内用户）
+[provider]
+type = "deepseek"
+api_key = "$DEEPSEEK_API_KEY"    # 引用环境变量，也可直接写 key
+model = "deepseek-v4-pro"
+
+[agent]
+max_turns = 25
+max_tokens = 4096
+```
+
+<details>
+<summary>更多配置示例（点击展开）</summary>
+
+```toml
+# Claude
+[provider]
+type = "anthropic"
+api_key = "$ANTHROPIC_API_KEY"
+
+# GPT-4o
+[provider]
+type = "openai"
+api_key = "$OPENAI_API_KEY"
+model = "gpt-4o"
+
+# MiMo（小米）
+[provider]
+type = "mimo"
+api_key = "$MIMO_API_KEY"
+
+# 本地 Ollama（免费）
+[provider]
+type = "ollama"
+api_key = "ollama"
+model = "llama3"
+
+# OpenRouter（一个 key 调所有模型）
+[provider]
+type = "openrouter"
+api_key = "$OPENROUTER_API_KEY"
+model = "deepseek/deepseek-v4-pro"
+
+# 自定义 OpenAI 兼容接口
+[provider]
+type = "openai"
+api_key = "$MY_API_KEY"
+model = "my-model"
+base_url = "https://my-api.com/v1"
+```
+
+</details>
+
 ### 运行
 
 ```bash
-# 用 DeepSeek（推荐国内用户）
-export PROVIDER=deepseek API_KEY=sk-your-deepseek-key
-mini-agent
-
-# 用 Claude
-export PROVIDER=anthropic API_KEY=sk-ant-your-key
-mini-agent
-
-# 用 GPT-4o
-export PROVIDER=openai API_KEY=sk-your-openai-key MODEL=gpt-4o
-mini-agent
-
-# 用 MiMo（小米）
-export PROVIDER=mimo API_KEY=sk-your-mimo-key
-mini-agent
-
-# 用本地 Ollama（免费）
-export PROVIDER=ollama MODEL=llama3
 mini-agent
 ```
+
+配置文件查找顺序：`./.mini`（项目级）→ `~/.mini`（用户全局）。
 
 ---
 
@@ -118,20 +160,32 @@ mini-agent
 | `siliconflow` | deepseek-ai/DeepSeek-V3 | https://api.siliconflow.cn/v1 |
 | `ollama` | llama3, qwen2, mistral | http://localhost:11434/v1 |
 
-> 任何兼容 OpenAI `/v1/chat/completions` 格式的模型都可以接入！只需设置 `PROVIDER=openai BASE_URL=你的地址 MODEL=模型名`
+> 任何兼容 OpenAI `/v1/chat/completions` 格式的模型都可以接入！只需在 `.mini` 中设置 `type = "openai"` + `base_url` + `model`。
 
 ---
 
-## 环境变量
+## .mini 配置文件
 
-| 变量 | 说明 | 示例 |
-|------|------|------|
-| `PROVIDER` | Provider 类型 | `deepseek` / `openai` / `anthropic` / `mimo` / `ollama` |
-| `API_KEY` | API 密钥（也支持 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`） | `sk-...` |
-| `MODEL` | 模型名（不填则用 provider 默认值） | `deepseek-v4-pro` |
-| `BASE_URL` | 自定义 API 地址（不填则用 provider 默认值） | `https://api.deepseek.com/v1` |
-| `MAX_TURNS` | 最大循环次数（默认 25） | `10` |
-| `MAX_TOKENS` | 最大输出 token 数（默认 4096） | `8192` |
+配置文件使用 TOML 格式，支持以下字段：
+
+```toml
+[provider]
+type = "deepseek"                          # 必填：provider 类型
+api_key = "$DEEPSEEK_API_KEY"              # 必填：API 密钥（支持 $ENV_VAR 引用）
+model = "deepseek-v4-pro"                  # 可选：模型名（有默认值）
+base_url = "https://api.deepseek.com/v1"   # 可选：自定义 API 地址（预设自动填）
+
+[agent]
+max_turns = 25                             # 可选：最大循环次数（默认 25）
+max_tokens = 4096                          # 可选：最大输出 token（默认 4096）
+project_root = "."                         # 可选：项目根目录（默认当前目录）
+
+[permissions]
+allow = ["bash:git *", "file_read"]        # 可选：自动放行的工具/命令
+deny = ["bash:rm -rf *"]                   # 可选：自动拒绝的工具/命令
+```
+
+**API Key 安全提示**：建议使用 `$ENV_VAR` 引用环境变量，避免将密钥明文写入配置文件。`.mini` 应加入 `.gitignore`。
 
 ---
 

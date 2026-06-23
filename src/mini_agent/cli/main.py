@@ -1,20 +1,18 @@
 """
 CLI 入口 — REPL 交互循环
 
-支持通过环境变量配置任意 Provider 和模型：
-  PROVIDER=openai MODEL=deepseek-v4-pro BASE_URL=https://api.deepseek.com/v1 API_KEY=sk-... mini-agent
+通过 .mini 配置文件配置 Provider 和模型，支持项目级和用户级配置。
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 from typing import Any
 
 from mini_agent.engine.engine import QueryEngine
-from mini_agent.types import EngineConfig, SimpleCallbacks, ToolResult
+from mini_agent.types import SimpleCallbacks, ToolResult
 
 
 # ============================================================
@@ -38,93 +36,42 @@ def colorize(color: str, text: str) -> str:
 
 
 # ============================================================
-# 配置加载（支持多 Provider）
+# 配置加载（从 .mini 文件）
 # ============================================================
 
-# Provider 默认模型映射
-DEFAULT_MODELS: dict[str, str] = {
-    "anthropic": "claude-sonnet-4-20250514",
-    "openai": "gpt-4o",
-}
 
-
-def load_config() -> EngineConfig:
+def load_config() -> "EngineConfig":
     """
-    从环境变量加载配置
+    从 .mini 配置文件加载配置
 
-    环境变量优先级：
-    - API_KEY 或 ANTHROPIC_API_KEY 或 OPENAI_API_KEY
-    - PROVIDER: anthropic (默认) / openai
-    - MODEL: 模型名
-    - BASE_URL: 自定义 API 地址
-    - MAX_TURNS: 最大循环次数
-    - MAX_TOKENS: 最大输出 token
-
-    快捷用法（预设 Provider）：
-    - PROVIDER=deepseek → 自动设 base_url 和默认 model
-    - PROVIDER=mimo → 自动设 base_url 和默认 model
-    - PROVIDER=qwen → 自动设 base_url 和默认 model
-    - PROVIDER=ollama → 自动设 base_url 和默认 model
+    查找顺序：
+    1. ./.mini  — 当前工作目录（项目级）
+    2. ~/.mini  — 用户主目录（全局）
     """
-    # 检测 provider
-    provider_raw = os.environ.get("PROVIDER", "anthropic").lower()
+    from mini_agent.config import find_config_path, load_config_file, build_engine_config
 
-    # 预设 Provider 快捷方式
-    from mini_agent.api.openai_provider import PROVIDER_PRESETS
+    config_path = find_config_path()
 
-    if provider_raw in PROVIDER_PRESETS:
-        preset = PROVIDER_PRESETS[provider_raw]
-        provider = "openai"  # 预设都走 openai 兼容格式
-        default_base_url = preset["base_url"]
-        default_model = preset["default_model"]
-    elif provider_raw in ("anthropic", "openai"):
-        provider = provider_raw
-        default_base_url = None
-        default_model = DEFAULT_MODELS.get(provider, "gpt-4o")
-    else:
-        # 未知 provider，尝试当作 openai 兼容
-        provider = "openai"
-        default_base_url = None
-        default_model = "gpt-4o"
-
-    # API Key（支持多种环境变量名）
-    api_key = (
-        os.environ.get("API_KEY")
-        or os.environ.get("ANTHROPIC_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or os.environ.get("DEEPSEEK_API_KEY")
-    )
-
-    if not api_key:
-        print(colorize(Colors.RED, "错误: 请设置 API_KEY 环境变量"))
+    if config_path is None:
+        print(colorize(Colors.RED, "错误: 未找到 .mini 配置文件"))
         print("")
-        print("  支持的环境变量名：API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY")
+        print("  请在以下位置之一创建 .mini 文件：")
+        print("    ./.mini  — 当前目录（项目级）")
+        print("    ~/.mini  — 用户主目录（全局）")
         print("")
-        print("  示例：")
-        print("    # Claude")
-        print("    export API_KEY=sk-ant-... && mini-agent")
+        print("  配置文件示例：")
+        print('    [provider]')
+        print('    type = "deepseek"')
+        print('    api_key = "$DEEPSEEK_API_KEY"')
+        print('    model = "deepseek-v4-pro"')
         print("")
-        print("    # DeepSeek")
-        print("    export PROVIDER=deepseek API_KEY=sk-... && mini-agent")
+        print('    [agent]')
+        print('    max_turns = 25')
         print("")
-        print("    # GPT")
-        print("    export PROVIDER=openai API_KEY=sk-... MODEL=gpt-4o && mini-agent")
         sys.exit(1)
 
-    model = os.environ.get("MODEL", default_model)
-    base_url = os.environ.get("BASE_URL", default_base_url)
-
-    return EngineConfig(
-        provider=provider,
-        api_key=api_key,
-        model=model,
-        base_url=base_url if base_url else None,
-        max_turns=int(os.environ.get("MAX_TURNS", "25")),
-        max_tokens=int(os.environ.get("MAX_TOKENS", "4096")),
-        project_root=os.getcwd(),
-        auto_compact=True,
-        compact_threshold=80000,
-    )
+    file_config = load_config_file(config_path)
+    return build_engine_config(file_config)
 
 
 # ============================================================
@@ -188,6 +135,9 @@ async def run_chat(engine: QueryEngine, user_input: str) -> None:
 
 async def async_main() -> None:
     """异步主函数"""
+    from mini_agent.config import find_config_path
+
+    config_path = find_config_path()
     config = load_config()
     engine = QueryEngine(config)
 
@@ -198,6 +148,8 @@ async def async_main() -> None:
     print(colorize(Colors.DIM, f"  Provider: {engine.provider_info}"))
     if config.base_url:
         print(colorize(Colors.DIM, f"  Endpoint: {config.base_url}"))
+    if config_path:
+        print(colorize(Colors.DIM, f"  配置文件: {config_path}"))
     print(colorize(Colors.DIM, f"  项目: {config.project_root}"))
     print("")
     print(colorize(Colors.DIM, "  输入你的需求，Agent 会自动思考并执行。"))

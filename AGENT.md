@@ -24,7 +24,9 @@
 
 ## 如何运行
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+# 1. 创建 .mini 配置文件（参考 .mini.example）
+# 2. 安装
 pip install -e .
+# 3. 运行
 mini-agent
 ```

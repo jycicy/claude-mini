@@ -1,0 +1,33 @@
+# .mini 配置文件示例
+# 复制此文件为 .mini 并修改为你的配置
+# .mini 应加入 .gitignore（不要提交 API Key）
+
+[provider]
+# Provider 类型：anthropic / openai / deepseek / mimo / qwen / glm / openrouter / siliconflow / ollama
+type = "deepseek"
+
+# API 密钥（推荐用 $ENV_VAR 引用环境变量，避免明文写入）
+api_key = "$DEEPSEEK_API_KEY"
+
+# 模型名（可选，不填则用 provider 默认值）
+model = "deepseek-v4-pro"
+
+# 自定义 API 地址（可选，预设 provider 会自动填）
+# base_url = "https://api.deepseek.com/v1"
+
+[agent]
+# 最大循环次数（可选，默认 25）
+max_turns = 25
+
+# 最大输出 token 数（可选，默认 4096）
+max_tokens = 4096
+
+# 项目根目录（可选，默认当前目录）
+# project_root = "."
+
+[permissions]
+# 自动放行的工具/命令（可选）
+# allow = ["bash:git *", "file_read"]
+
+# 自动拒绝的工具/命令（可选）
+# deny = ["bash:rm -rf *"]
