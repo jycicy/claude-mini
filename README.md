@@ -85,8 +85,9 @@ pip install -e .
 ```toml
 # .mini — DeepSeek 配置示例（推荐国内用户）
 [provider]
-type = "deepseek"
-api_key = "$DEEPSEEK_API_KEY"    # 引用环境变量，也可直接写 key
+type = "openai"
+base_url = "https://api.openai.com/v1"
+api_key = "sk-fjwi..."    # 引用环境变量(api_key = "$DEEPSEEK_API_KEY")，也可直接写 key
 model = "deepseek-v4-pro"
 
 [agent]
