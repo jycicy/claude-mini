@@ -133,6 +133,15 @@ async def run_chat(engine: QueryEngine, user_input: str) -> None:
     ))
 
 
+LOGO_LINES = [
+    "  __  __ _       _    _____          _       ",
+    " |  \\/  (_)_ __ (_)  / ___|___   __| | ___  ",
+    " | |\\/| | | '_ \\| | | |   / _ \\ / _` |/ _ \\ ",
+    " | |  | | | | | | | | |__| (_) | (_| |  __/ ",
+    " |_|  |_|_|_| |_|_|  \\____\\___/ \\__,_|\\___| ",
+]
+
+
 async def async_main() -> None:
     """异步主函数"""
     from mini_agent.config import find_config_path
@@ -141,24 +150,29 @@ async def async_main() -> None:
     config = load_config()
     engine = QueryEngine(config)
 
-    # 打印欢迎信息
+    # 打印 Logo
+    for line in LOGO_LINES:
+        print(colorize(Colors.CYAN, line))
     print("")
-    print(colorize(Colors.BOLD, "  Mini Agent Framework v0.2.0 (Python)"))
-    print(colorize(Colors.DIM, "  基于 Claude Code 架构的精简版 Agent — 多模型支持"))
-    print(colorize(Colors.DIM, f"  Provider: {engine.provider_info}"))
+
+    # 信息卡片
+    print(colorize(Colors.BOLD, "  MiniCode") + colorize(Colors.DIM, " v0.2.0"))
+    print("")
+    print(colorize(Colors.DIM, "  Provider  : ") + colorize(Colors.GREEN, engine.provider_info))
     if config.base_url:
-        print(colorize(Colors.DIM, f"  Endpoint: {config.base_url}"))
+        print(colorize(Colors.DIM, "  Endpoint  : ") + colorize(Colors.DIM, config.base_url))
     if config_path:
-        print(colorize(Colors.DIM, f"  配置文件: {config_path}"))
-    print(colorize(Colors.DIM, f"  项目: {config.project_root}"))
+        print(colorize(Colors.DIM, "  Config    : ") + colorize(Colors.DIM, str(config_path)))
+    print(colorize(Colors.DIM, "  Project   : ") + colorize(Colors.DIM, config.project_root))
+    print(colorize(Colors.DIM, "  ────────────────────────────────────────────────"))
     print("")
-    print(colorize(Colors.DIM, "  输入你的需求，Agent 会自动思考并执行。"))
-    print(colorize(Colors.DIM, "  输入 /quit 退出，/clear 清空对话，/usage 查看消耗"))
+    print(colorize(Colors.DIM, "  输入需求开始对话"))
+    print(colorize(Colors.DIM, "  /quit 退出  /clear 清空  /usage 消耗  /model 模型"))
     print("")
 
     while True:
         try:
-            user_input = input(colorize(Colors.GREEN, "> "))
+            user_input = input(colorize(Colors.CYAN, "  ✦ "))
         except (EOFError, KeyboardInterrupt):
             print(colorize(Colors.DIM, "\nBye!"))
             break
@@ -198,7 +212,10 @@ async def async_main() -> None:
 
 def main() -> None:
     """入口函数"""
-    asyncio.run(async_main())
+    try:
+        asyncio.run(async_main())
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":
